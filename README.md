@@ -481,6 +481,7 @@ Se recomienda implementar pruebas automatizadas y mantener documentación actual
 **Contenido:** Interfaz del sistema mostrando conversación exitosa con el asistente de IA
 
 ![Evidencia de Funcionamiento del Modelo](Evidencias/EvidenciaFuncionaModelo.png)
+![Evidencia de Funcionamiento del Modelo](Evidencias/Ticket2Creacion.png)
 
 ---
 
