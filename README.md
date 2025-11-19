@@ -6,6 +6,7 @@
 
 **Universidad:** Universidad Privada de Tacna  
 **Curso:** Auditoría  
+**Docente:** Dr. OSCAR JUAN JIMENEZ FLORES  
 **Examen:** Examen de Unidad III  
 **Entidad Auditada:** CORPORATE EPIS PILOT - Sistema de Mesa de Ayuda con IA  
 **Ubicación:** Sistema de Mesa de Ayuda con IA - Help Desk  
