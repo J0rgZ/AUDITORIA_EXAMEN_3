@@ -484,13 +484,13 @@ Se recomienda implementar pruebas automatizadas y mantener documentación actual
 ---
 
 ### Anexo C: Base de Datos de Tickets
-**Descripción:** Captura de pantalla mostrando la base de datos SQLite con tickets creados exitosamente
+**Descripción:** Captura de pantalla mostrando los Logs Creados en Docker con tickets creados exitosamente
 
 **Archivo:** `Evidencias/Ticket.db.png`
 
-**Contenido:** Visualización de la tabla tickets en la base de datos SQLite con registros de tickets creados
+**Contenido:** Visualización de los log del ticket creado en el docker Log
 
-![Base de Datos de Tickets](Evidencias/Ticket.db.png)
+![Base de Datos de Tickets](Evidencias/TicketCreado_LOGDocker.png)
 
 ---
 
