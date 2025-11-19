@@ -4,6 +4,9 @@
 
 ## CARÁTULA
 
+**Universidad:** Universidad Privada de Tacna  
+**Curso:** Auditoría  
+**Examen:** Examen de Unidad III  
 **Entidad Auditada:** CORPORATE EPIS PILOT - Sistema de Mesa de Ayuda con IA  
 **Ubicación:** Sistema de Mesa de Ayuda con IA - Help Desk  
 **Período auditado:** 19 de noviembre de 2025  
@@ -465,6 +468,8 @@ Se recomienda implementar pruebas automatizadas y mantener documentación actual
 
 **Contenido:** Log mostrando el mensaje: `the attribute 'version' is obsolete, it will be ignored`
 
+![Error de Versión en Docker Compose](Evidencias/ErrorVersionDockerBuil.png)
+
 ---
 
 ### Anexo B: Evidencia de Funcionamiento del Modelo
@@ -474,6 +479,8 @@ Se recomienda implementar pruebas automatizadas y mantener documentación actual
 
 **Contenido:** Interfaz del sistema mostrando conversación exitosa con el asistente de IA
 
+![Evidencia de Funcionamiento del Modelo](Evidencias/EvidenciaFuncionaModelo.png)
+
 ---
 
 ### Anexo C: Base de Datos de Tickets
@@ -482,6 +489,8 @@ Se recomienda implementar pruebas automatizadas y mantener documentación actual
 **Archivo:** `Evidencias/Ticket.db.png`
 
 **Contenido:** Visualización de la tabla tickets en la base de datos SQLite con registros de tickets creados
+
+![Base de Datos de Tickets](Evidencias/Ticket.db.png)
 
 ---
 
