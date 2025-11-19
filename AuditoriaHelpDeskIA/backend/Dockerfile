@@ -15,7 +15,6 @@ COPY . .
 # Ejecutamos el script de ingesta para crear la 'vector_store' DENTRO de la imagen
 RUN python ingest.py
 
-RUN python database_setup.py
-
+# La base de datos se creará al iniciar el contenedor, no durante el build
 # El comando para iniciar la API (esto no cambia)
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "python database_setup.py && uvicorn main:app --host 0.0.0.0 --port 8000"]

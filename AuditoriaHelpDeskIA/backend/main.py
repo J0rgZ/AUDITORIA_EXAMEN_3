@@ -1,7 +1,8 @@
 # backend/main.py
 import sqlite3
 import re
-import sys 
+import sys
+import os
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,8 +40,9 @@ logging.getLogger("uvicorn.access").handlers = [InterceptHandler()]
 
 
 # --- CONFIGURACIÓN Y MODELOS ---
+import os
 VECTOR_STORE_DIR = "vector_store"
-DB_PATH = "tickets.db"
+DB_PATH = os.getenv("DB_PATH", "data/tickets.db")
 app = FastAPI(title="Corporate EPIS Pilot API - Advanced Flow")
 app.add_middleware(
     CORSMiddleware,
@@ -51,7 +53,7 @@ app.add_middleware(
 Instrumentator().instrument(app).expose(app)
 
 
-llm = OllamaLLM(model="llama3.1:8b", temperature=0, base_url="http://host.docker.internal:11434")
+llm = OllamaLLM(model="smollm:360m", temperature=0, base_url="http://host.docker.internal:11434")
 embeddings = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-large")
 vector_store = Chroma(persist_directory=VECTOR_STORE_DIR, embedding_function=embeddings)
 retriever = vector_store.as_retriever()
@@ -63,17 +65,36 @@ rag_chain = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=r
 
 def create_support_ticket(description: str) -> str:
     """Crea un ticket de soporte y devuelve un mensaje de confirmación."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    problem_description = description.replace("ACTION_CREATE_TICKET:", "").strip()
-    if not problem_description:
-        problem_description = "Problema no especificado por el usuario."
+    try:
+        # Asegurar que el directorio existe
+        db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+        
+        # Crear la tabla si no existe
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tickets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            description TEXT NOT NULL,
+            status TEXT NOT NULL
+        )
+        ''')
+        conn.commit()
+        
+        problem_description = description.replace("ACTION_CREATE_TICKET:", "").strip()
+        if not problem_description:
+            problem_description = "Problema no especificado por el usuario."
 
-    cursor.execute("INSERT INTO tickets (description, status) VALUES (?, ?)", (problem_description, "Abierto"))
-    ticket_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return f"De acuerdo. He creado el ticket de soporte #{ticket_id} con tu problema: '{problem_description}'. El equipo técnico se pondrá en contacto contigo."
+        cursor.execute("INSERT INTO tickets (description, status) VALUES (?, ?)", (problem_description, "Abierto"))
+        ticket_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return f"De acuerdo. He creado el ticket de soporte #{ticket_id} con tu problema: '{problem_description}'. El equipo técnico se pondrá en contacto contigo."
+    except Exception as e:
+        logger.error(f"Error al crear ticket: {e}")
+        return f"Error al crear el ticket. Por favor, inténtalo de nuevo. Error: {str(e)}"
 
 # El router ahora es más simple
 # CAMBIO 1: Añadimos la nueva intención 'despedida'
@@ -82,24 +103,36 @@ class RouteQuery(BaseModel):
 
 output_parser = JsonOutputParser(pydantic_object=RouteQuery)
 # CAMBIO 2: Actualizamos el prompt para que el LLM sepa qué es una 'despedida'
+# Simplificado para modelos pequeños como smollm:360m
 router_prompt = PromptTemplate(
-    template="""
-    Clasifica la pregunta del usuario en 'pregunta_general', 'reporte_de_problema' o 'despedida'. Responde solo con JSON.
-    'pregunta_general': El usuario pide información (¿qué es?, ¿cuántos?, ¿cómo?).
-    'reporte_de_problema': El usuario describe un problema, algo está roto o no funciona.
-    'despedida': El usuario expresa gratitud o se despide (gracias, adiós, perfecto, vale).
-    Pregunta: {question}
-    Formato: {format_instructions}
-    """,
+    template="""Clasifica la intención del usuario. Responde SOLO con un JSON válido con este formato exacto:
+{{"intent": "valor_aqui"}}
+
+Opciones para "intent":
+- "pregunta_general": cuando el usuario pregunta algo, busca información
+- "reporte_de_problema": cuando el usuario reporta un problema, algo no funciona, necesita ayuda técnica
+- "despedida": cuando el usuario dice gracias, adiós, perfecto, vale, ok
+
+Pregunta del usuario: {question}
+
+Respuesta JSON:""",
     input_variables=["question"],
-    partial_variables={"format_instructions": output_parser.get_format_instructions()},
 )
 def extract_json_from_string(text: str) -> str:
-    match = re.search(r'\{.*\}', text, re.DOTALL)
-    # Si no encuentra JSON o la pregunta es muy corta, es probable que sea una despedida
-    if not match and len(text) < 20:
+    # Buscar JSON válido en la respuesta
+    match = re.search(r'\{"intent"\s*:\s*"[^"]+"\s*\}', text, re.DOTALL)
+    if match:
+        return match.group(0)
+    
+    # Si no encuentra JSON válido, intentar detectar la intención por palabras clave
+    text_lower = text.lower()
+    if any(word in text_lower for word in ['gracias', 'adiós', 'adios', 'perfecto', 'vale', 'ok', 'okay']):
         return '{"intent": "despedida"}'
-    return match.group(0) if match else '{"intent": "pregunta_general"}'
+    if any(word in text_lower for word in ['problema', 'no funciona', 'roto', 'averiado', 'error', 'falla', 'ticket']):
+        return '{"intent": "reporte_de_problema"}'
+    
+    # Por defecto, asumir pregunta general
+    return '{"intent": "pregunta_general"}'
 
 router_chain = router_prompt | llm | RunnableLambda(extract_json_from_string) | output_parser
 
@@ -115,21 +148,42 @@ def ask_question(question: str):
             description = question.split(":", 1)[1]
             return {"answer": create_support_ticket(description), "follow_up_required": False}
 
-        decision_result = chain_with_preserved_input.invoke({"question": question})
-        intent = decision_result["decision"]["intent"]
+        # Intentar obtener la decisión del router
+        try:
+            decision_result = chain_with_preserved_input.invoke({"question": question})
+            intent = decision_result["decision"]["intent"]
+        except Exception as router_error:
+            logger.warning(f"Error en router, usando fallback: {router_error}")
+            # Fallback: detectar intención por palabras clave
+            question_lower = question.lower()
+            if any(word in question_lower for word in ['gracias', 'adiós', 'adios', 'perfecto', 'vale', 'ok']):
+                intent = "despedida"
+            elif any(word in question_lower for word in ['problema', 'no funciona', 'roto', 'averiado', 'error', 'falla', 'ticket']):
+                intent = "reporte_de_problema"
+            else:
+                intent = "pregunta_general"
+            decision_result = {"question": question}
         
         answer = ""
         follow_up = False
 
         if intent == "pregunta_general":
-            result = problem_chain.invoke(decision_result)
-            answer = result.get("result", "No se encontró respuesta.")
+            try:
+                result = problem_chain.invoke(decision_result)
+                answer = result.get("result", "No se encontró respuesta en la base de conocimiento.")
+            except Exception as e:
+                logger.error(f"Error en RAG chain: {e}")
+                answer = "No pude encontrar información relevante en la base de conocimiento."
         elif intent == "reporte_de_problema":
-            result = problem_chain.invoke(decision_result)
-            solution = result.get("result", "No he encontrado una solución específica en mis documentos.")
-            answer = f"{solution}\n\n¿Esta información soluciona tu problema?"
-            follow_up = True
-        # CAMBIO 3: Añadimos el manejo de la nueva intención
+            try:
+                result = problem_chain.invoke(decision_result)
+                solution = result.get("result", "No he encontrado una solución específica en mis documentos.")
+                answer = f"{solution}\n\n¿Esta información soluciona tu problema?"
+                follow_up = True
+            except Exception as e:
+                logger.error(f"Error en RAG chain para problema: {e}")
+                answer = "No pude encontrar una solución en la base de conocimiento.\n\n¿Quieres crear un ticket de soporte para que un experto te ayude?"
+                follow_up = True
         elif intent == "despedida":
             answer = "De nada, ¡un placer ayudar! Si tienes cualquier otra consulta, aquí estaré. 😊"
             follow_up = False
@@ -138,5 +192,5 @@ def ask_question(question: str):
 
     except Exception as e:
         # AÑADIDO: Usamos logger en lugar de print para un registro estructurado
-        logger.error(f"Error en el endpoint /ask: {e}")
-        return {"answer": "Lo siento, ha ocurrido un error.", "follow_up_required": False}
+        logger.error(f"Error en el endpoint /ask: {e}", exc_info=True)
+        return {"answer": f"Lo siento, ha ocurrido un error. Por favor, intenta de nuevo o describe tu problema para crear un ticket de soporte.", "follow_up_required": False}
